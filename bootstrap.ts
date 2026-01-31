@@ -1,4 +1,5 @@
 import { log } from './content/debug'
+declare const Components: any
 
 export function install() {
   log.info('installed')

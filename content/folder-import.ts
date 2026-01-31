@@ -1,10 +1,6 @@
 declare var Zotero: any // eslint-disable-line no-var
-declare const FileUtils: any
 declare const Services: any
-
 declare const Components: any
-Components.utils.import('resource://gre/modules/FileUtils.jsm')
-
 declare const ChromeUtils: any
 
 import { FilePickerHelper, ZoteroToolkit } from 'zotero-plugin-toolkit'
@@ -204,7 +200,7 @@ export class $FolderImport {
     const duplicates: string = PathUtils.join(Zotero.getTempDirectory().path as string, `rmlint${Zotero.Utilities.randomString()}.json`)
 
     try {
-      const cmd = new FileUtils.File(rmlint)
+      const cmd = Zotero.File.pathToFile(rmlint)
       if (!cmd.isExecutable()) return []
 
       const proc = Components.classes['@mozilla.org/process/util;1'].createInstance(Components.interfaces.nsIProcess)

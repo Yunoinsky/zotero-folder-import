@@ -1,15 +1,15 @@
-const fs = require('fs')
-const path = require('path')
-const esbuild = require('esbuild')
-const rmrf = require('rimraf')
-const pug = require('pug')
-const pretty = require('pretty')
+import path from 'path'
+import fs from 'fs'
 
-rmrf.sync('gen')
+import esbuild from 'esbuild'
 
-require('zotero-plugin/copy-assets')
-require('zotero-plugin/rdf')
-require('zotero-plugin/version')
+import 'zotero-plugin/make-dirs'
+import 'zotero-plugin/make-manifest'
+import 'zotero-plugin/make-version'
+import 'zotero-plugin/copy-assets'
+
+import pug from 'pug'
+import pretty from 'pretty'
 
 async function bundle(entry) {
   const outdir = path.join('build', path.basename(path.dirname(entry)))
