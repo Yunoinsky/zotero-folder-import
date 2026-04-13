@@ -1,7 +1,7 @@
 {
   "name": "zotero-folder-import",
   "type": "module",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Import folder of attachments into a collection hierarchy",
   "scripts": {
     "lint": "dprint fmt bootstrap.ts content/*.ts && dprint check bootstrap.ts content/*.ts",
@@ -38,8 +38,8 @@
   },
   "xpi": {
     "name": "Folder Import for Zotero",
-    "updateLink": "https://github.com/retorquere/zotero-folder-import/releases/download/v{version}/zotero-auto-index-{version}.xpi",
-    "releaseURL": "https://github.com/retorquere/zotero-folder-import/releases/download/release/"
+    "updateLink": "https://github.com/Yunoinsky/zotero-folder-import/releases/download/v{version}/zotero-auto-index-{version}.xpi",
+    "releaseURL": "https://github.com/Yunoinsky/zotero-folder-import/releases/download/release/"
   },
   "dependencies": {
     "zotero-plugin-toolkit": "^5.0.1"
