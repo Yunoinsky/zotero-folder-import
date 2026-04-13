@@ -151,37 +151,103 @@ class FolderScanner {
 }
 
 class PDFWatcher {
-  private intervalId: number | null = null
+  private intervalId: ReturnType<typeof setTimeout> | null = null
   private processedFiles: Set<string> = new Set()
   private watchFolder: string = ''
   private libraryID: number | null = null
+  private processedFilesPath: string = ''
+  private isScanning: boolean = false
 
   constructor() {
-    this.loadProcessedFiles()
     this.watchFolder = Zotero.Prefs.get('extensions.folder-import.watchFolder') || ''
     this.libraryID = Zotero.Prefs.get('extensions.folder-import.watchLibraryID') || null
+    this.updateProcessedFilesPath()
+    this.loadProcessedFiles()
+  }
+
+  private updateProcessedFilesPath() {
+    this.processedFilesPath = this.watchFolder ? PathUtils.join(this.watchFolder, '.zotero-folder-import-processed.json') : ''
+  }
+
+  private normalizePath(path: string): string {
+    if (!path) return path
+    return path.replace(/\/+$/, '')
   }
 
   private loadProcessedFiles() {
+    this.processedFiles.clear()
+
+    // First try to load from file
+    if (this.processedFilesPath) {
+      try {
+        const content = Zotero.File.getContents(this.processedFilesPath)
+        if (content) {
+          const arr = JSON.parse(content)
+          arr.forEach((p: string) => this.processedFiles.add(this.normalizePath(p)))
+          log.info(`Loaded ${this.processedFiles.size} processed files from file`)
+          return
+        }
+      }
+      catch (err) {
+        log.debug(`Failed to load from file: ${err}`)
+      }
+    }
+
+    // Fallback to Zotero prefs
     try {
       const stored = Zotero.Prefs.get('extensions.folder-import.processedFiles')
       if (stored) {
         const arr = JSON.parse(stored as string)
-        this.processedFiles = new Set(arr)
-        log.info(`Loaded ${this.processedFiles.size} processed files`)
+        arr.forEach((p: string) => this.processedFiles.add(this.normalizePath(p)))
+        log.info(`Loaded ${this.processedFiles.size} processed files from prefs`)
       }
     }
     catch (err) {
-      log.debug(`Failed to load processed files: ${err}`)
+      log.debug(`Failed to load from prefs: ${err}`)
     }
   }
 
   private saveProcessedFiles() {
+    // Save to file
+    if (this.processedFilesPath) {
+      try {
+        Zotero.File.putContents(this.processedFilesPath, JSON.stringify([...this.processedFiles]))
+        log.debug(`Saved ${this.processedFiles.size} processed files to file`)
+      }
+      catch (err) {
+        log.error(`Failed to save to file: ${err}`)
+      }
+    }
+
+    // Also save to prefs as backup
     try {
       Zotero.Prefs.set('extensions.folder-import.processedFiles', JSON.stringify([...this.processedFiles]))
     }
     catch (err) {
-      log.error(`Failed to save processed files: ${err}`)
+      log.error(`Failed to save to prefs: ${err}`)
+    }
+  }
+
+  private addProcessedFile(filePath: string) {
+    this.processedFiles.add(this.normalizePath(filePath))
+    this.saveProcessedFiles()
+  }
+
+  public clearProcessedFiles() {
+    this.processedFiles.clear()
+    this.saveProcessedFiles()
+
+    if (this.processedFilesPath) {
+      try {
+        const file = Zotero.File.pathToFile(this.processedFilesPath)
+        if (file.exists()) {
+          file.remove()
+        }
+        log.info('Cleared processed files and deleted tracking file')
+      }
+      catch (err) {
+        log.error(`Failed to delete tracking file: ${err}`)
+      }
     }
   }
 
@@ -191,8 +257,10 @@ class PDFWatcher {
 
   public setWatchFolder(folder: string) {
     this.watchFolder = folder
+    this.updateProcessedFilesPath()
     Zotero.Prefs.set('extensions.folder-import.watchFolder', folder)
-    log.info(`Watch folder set to: ${folder}`)
+    this.loadProcessedFiles()
+    log.info(`Watch folder set to: ${folder}, loaded ${this.processedFiles.size} processed files`)
   }
 
   public setLibraryID(libraryID: number) {
@@ -209,67 +277,82 @@ class PDFWatcher {
   }
 
   public async scanAndImportNewFiles() {
+    if (this.isScanning) {
+      log.debug('Scan already in progress, skipping')
+      return
+    }
+
     if (!this.watchFolder || !await IOUtils.exists(this.watchFolder)) {
       log.debug(`Watch folder does not exist or not set: ${this.watchFolder}`)
       return
     }
 
-    log.info(`Scanning watch folder: ${this.watchFolder}`)
-    const root = new FolderScanner(this.watchFolder, true)
-    await root.scan()
+    this.isScanning = true
 
-    if (!root.extensions.size) {
-      log.debug('No files found in watch folder')
-      return
-    }
+    try {
+      log.info(`Scanning watch folder: ${this.watchFolder}`)
+      const root = new FolderScanner(this.watchFolder, true)
+      await root.scan()
 
-    const params = {
-      link: false,
-      extensions: root.extensions,
-      libraryID: this.libraryID,
-      progress: { update: () => {} },
-    }
-
-    const pdfs: any[] = []
-    const newFiles: string[] = []
-
-    root.files.forEach(file => {
-      if (!this.processedFiles.has(file) && file.toLowerCase().endsWith('.pdf')) {
-        newFiles.push(file)
+      if (!root.extensions.size) {
+        log.debug('No files found in watch folder')
+        return
       }
-    })
 
-    if (newFiles.length === 0) {
-      log.debug('No new files to import')
-      return
-    }
+      const params = {
+        link: false,
+        extensions: root.extensions,
+        libraryID: this.libraryID,
+        progress: { update: () => {} },
+      }
 
-    log.info(`Found ${newFiles.length} new files to import`)
+      const pdfs: any[] = []
+      const newFiles: string[] = []
 
-    for (const file of newFiles.sort()) {
-      try {
-        log.info(`Importing new file: ${file}`)
-        const item = await Zotero.Attachments.importFromFile({
-          file,
-          libraryID: this.libraryID!,
-          collections: undefined,
-        })
-        if (file.toLowerCase().endsWith('.pdf')) {
-          pdfs.push(item)
+      log.info(`Total files in folder: ${root.files.length}, processed files: ${this.processedFiles.size}`)
+
+      root.files.forEach(file => {
+        const normalizedFile = this.normalizePath(file)
+        const isProcessed = this.processedFiles.has(normalizedFile)
+        log.debug(`Checking file: ${file}, normalized: ${normalizedFile}, isProcessed: ${isProcessed}`)
+        if (!isProcessed && file.toLowerCase().endsWith('.pdf')) {
+          newFiles.push(normalizedFile)
         }
-        this.processedFiles.add(file)
+      })
+
+      if (newFiles.length === 0) {
+        log.debug('No new files to import')
+        return
       }
-      catch (err) {
-        log.error(`Failed to import ${file}: ${err}`)
+
+      log.info(`Found ${newFiles.length} new files to import`)
+
+      for (const normalizedFile of newFiles.sort()) {
+        try {
+          log.info(`Importing new file: ${normalizedFile}`)
+          const item = await Zotero.Attachments.importFromFile({
+            file: normalizedFile,
+            libraryID: this.libraryID!,
+            collections: undefined,
+          })
+          if (normalizedFile.toLowerCase().endsWith('.pdf')) {
+            pdfs.push(item)
+          }
+          this.addProcessedFile(normalizedFile)
+        }
+        catch (err) {
+          log.error(`Failed to import ${normalizedFile}: ${err}`)
+        }
+        await sleep(10)
       }
-      await sleep(10)
+
+      if (pdfs.length > 0) {
+        log.info(`Recognizing metadata for ${pdfs.length} PDFs`)
+        Zotero.RecognizeDocument.autoRecognizeItems(pdfs)
+      }
     }
-
-    this.saveProcessedFiles()
-
-    if (pdfs.length > 0) {
-      log.info(`Recognizing metadata for ${pdfs.length} PDFs`)
-      Zotero.RecognizeDocument.autoRecognizeItems(pdfs)
+    finally {
+      this.isScanning = false
     }
   }
 
@@ -285,16 +368,15 @@ class PDFWatcher {
     }
 
     log.info(`Starting PDF watcher on ${this.watchFolder} with interval ${intervalMs}ms`)
-    this.intervalId = Zotero.setTimeout(() => this.scanAndImportNewFiles(), intervalMs)
 
     const checkInterval = () => {
       if (this.intervalId !== null) {
         this.scanAndImportNewFiles()
-        this.intervalId = Zotero.setTimeout(checkInterval, intervalMs)
+        this.intervalId = setTimeout(checkInterval, intervalMs)
       }
     }
 
-    this.intervalId = Zotero.setTimeout(checkInterval, intervalMs)
+    this.intervalId = setTimeout(checkInterval, intervalMs)
     Zotero.Prefs.set('extensions.folder-import.watchEnabled', true)
     Zotero.Prefs.set('extensions.folder-import.watchInterval', intervalMs)
 
@@ -304,25 +386,14 @@ class PDFWatcher {
   public stopWatching() {
     if (this.intervalId !== null) {
       log.info('Stopping PDF watcher')
-      Zotero.clearTimeout(this.intervalId)
+      clearTimeout(this.intervalId)
       this.intervalId = null
       Zotero.Prefs.set('extensions.folder-import.watchEnabled', false)
     }
   }
 
-  public addProcessedFile(filePath: string) {
-    this.processedFiles.add(filePath)
-    this.saveProcessedFiles()
-  }
-
   public getProcessedFilesCount(): number {
     return this.processedFiles.size
-  }
-
-  public clearProcessedFiles() {
-    this.processedFiles.clear()
-    this.saveProcessedFiles()
-    log.info('Cleared processed files list')
   }
 }
 
@@ -360,34 +431,47 @@ export class $FolderImport {
   public onMainWindowLoad(win: Window) {
     log.debug('onMainWindowLoad')
 
-    ztoolkit.Menu.register('menuFile', {
-      tag: 'menuitem',
-      label: 'Add Files from Folder…',
-      oncommand: 'Zotero.FolderImport.addAttachmentsFromFolder()',
-    })
-
     ztoolkit.Menu.register('menuTools', {
-      tag: 'menuitem',
-      label: 'PDF Watch: Start',
-      oncommand: 'Zotero.FolderImport.startWatching()',
-    })
-
-    ztoolkit.Menu.register('menuTools', {
-      tag: 'menuitem',
-      label: 'PDF Watch: Stop',
-      oncommand: 'Zotero.FolderImport.stopWatching()',
-    })
-
-    ztoolkit.Menu.register('menuTools', {
-      tag: 'menuitem',
-      label: 'PDF Watch: Set Folder…',
-      oncommand: 'Zotero.FolderImport.setWatchFolder()',
-    })
-
-    ztoolkit.Menu.register('menuTools', {
-      tag: 'menuitem',
-      label: 'PDF Watch: Status',
-      oncommand: 'Zotero.FolderImport.showWatchStatus()',
+      tag: 'menu',
+      label: 'PDF Watch',
+      children: [
+        {
+          tag: 'menuitem',
+          label: 'Import from Folder…',
+          oncommand: 'Zotero.FolderImport.addAttachmentsFromFolder()',
+        },
+        {
+          tag: 'menuseparator',
+        },
+        {
+          tag: 'menuitem',
+          label: 'Start',
+          oncommand: 'Zotero.FolderImport.startWatching()',
+        },
+        {
+          tag: 'menuitem',
+          label: 'Stop',
+          oncommand: 'Zotero.FolderImport.stopWatching()',
+        },
+        {
+          tag: 'menuseparator',
+        },
+        {
+          tag: 'menuitem',
+          label: 'Set Folder…',
+          oncommand: 'Zotero.FolderImport.setWatchFolder()',
+        },
+        {
+          tag: 'menuitem',
+          label: 'Status',
+          oncommand: 'Zotero.FolderImport.showWatchStatus()',
+        },
+        {
+          tag: 'menuitem',
+          label: 'Clear History',
+          oncommand: 'Zotero.FolderImport.clearHistory()',
+        },
+      ],
     })
   }
 
@@ -434,7 +518,7 @@ export class $FolderImport {
   public showWatchStatus() {
     const folder = this.watcher.getWatchFolder()
     const isWatching = this.watcher.isWatching()
-    const processedCount = this.watcher.getProcessedFilesCount?.() || 0
+    const processedCount = this.watcher.getProcessedFilesCount()
 
     const status = isWatching ? 'Running' : 'Stopped'
     const msg = `Status: ${status}\nFolder: ${folder || 'Not set'}\nProcessed files: ${processedCount}`
@@ -442,11 +526,16 @@ export class $FolderImport {
     Services.prompt.alert(null, 'PDF Watch Status', msg)
   }
 
+  public clearHistory() {
+    this.watcher.clearProcessedFiles()
+    Services.prompt.alert(null, 'History Cleared', 'Processed files history has been cleared.\nPDF Watch will re-import all files in the watch folder on next scan.')
+  }
+
   public async getWatchStatus(): Promise<{ folder: string; isWatching: boolean; processedCount: number }> {
     return {
       folder: this.watcher.getWatchFolder(),
       isWatching: this.watcher.isWatching(),
-      processedCount: this.watcher.getProcessedFilesCount?.() || 0,
+      processedCount: this.watcher.getProcessedFilesCount(),
     }
   }
 
