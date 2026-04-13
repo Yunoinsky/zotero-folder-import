@@ -254,10 +254,6 @@ export class $FolderImport {
       return
     }
     const collection = zoteroPane.getSelectedCollection()
-    if (!collection) {
-      Services.prompt.alert(null, 'No collection selected', 'A collection must be selected to import into')
-      return
-    }
 
     log.debug('opening file picker')
     const folder = await (new FilePickerHelper(`${Zotero.getString('fileInterface.import')} Folder`, 'folder')).open()
@@ -274,38 +270,12 @@ export class $FolderImport {
     if (root.extensions.size) {
       const collectionTreeRow = zoteroPane.getCollectionTreeRow()
       const params = {
-        link: !collectionTreeRow.isWithinGroup() && !collectionTreeRow.isPublications(),
+        link: false,
         extensions: root.extensions,
         libraryID: collectionTreeRow.ref.libraryID,
         progress: this,
-      } // TODO: warn for .lnk files when params.link === false
-
-      log.debug('opening selector')
-      const defaults = {
-        selected: [...root.extensions].sort().join(', '),
-        link: !!params.link,
       }
 
-      /*
-      const window = Zotero.getMainWindow()
-      window.openDialog('chrome://zotero-folder-import/content/wizard.xhtml', '', 'chrome,dialog,centerscreen,modal', {
-        extensions: [...root.extensions],
-        defaults: {
-          pdf: 'attach',
-          bib: 'import',
-        },
-      })
-      */
-
-      do {
-        const selected = { value: defaults.selected }
-        const link = { value: defaults.link }
-        if (!Services.prompt.prompt(null, 'File extensions', 'File extensions to import', selected, 'Link instead of import', link)) return
-        log.debug({ selected, link })
-        params.extensions = new Set(selected.value.split(',').map(_ => _.trim()).filter(_ => _))
-        params.link = link.value
-      }
-      while ([...params.extensions].find(ext => !root.extensions.has(ext)))
       log.debug('selected:', Array.from(params.extensions))
 
       if (params.extensions.size) {
