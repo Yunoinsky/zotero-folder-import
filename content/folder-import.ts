@@ -280,7 +280,7 @@ class PDFWatcher {
     }
 
     if (!this.watchFolder) {
-      log.warn('Cannot start watching: no watch folder set')
+      log.info('Cannot start watching: no watch folder set')
       return false
     }
 
@@ -318,7 +318,6 @@ class PDFWatcher {
   public getProcessedFilesCount(): number {
     return this.processedFiles.size
   }
-}
 
   public clearProcessedFiles() {
     this.processedFiles.clear()

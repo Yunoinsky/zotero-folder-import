@@ -2,6 +2,8 @@
 
 [Original by retorquere](https://github.com/retorquere/zotero-folder-import) | [Fork by Yunoinsky](https://github.com/Yunoinsky/zotero-folder-import)
 
+> This fork was developed with assistance from **OpenCode** (AI coding agent powered by MiniMax). The AI agent helped implement PDF Watch continuous monitoring feature and UX improvements.
+
 ## Installation
 
 Install by downloading the [latest version](https://github.com/Yunoinsky/zotero-folder-import/releases/latest).
