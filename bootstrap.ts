@@ -4,6 +4,7 @@ declare const Components: any
 export function install() {
   log.info('installed')
 }
+
 export function uninstall() {
   log.info('uninstalled')
 }
@@ -19,7 +20,10 @@ export async function startup({ id, version, rootURI }) {
     ['locale', 'zotero-folder-import', 'en-US', 'locale/en-US/'],
   ])
 
-  Services.scriptloader.loadSubScript(`${rootURI}content/folder-import.js`, { rootURI, Zotero })
+  const ctx: any = { rootURI, Zotero }
+  ctx._globalThis = ctx
+  globalThis.rootURI = rootURI
+  Services.scriptloader.loadSubScript(`${rootURI}content/folder-import.js`, ctx)
   await Zotero.FolderImport.startup()
   log.info('startup', id, version, 'ready')
 }

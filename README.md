@@ -4,6 +4,16 @@
 
 > This fork was developed with assistance from **OpenCode** (AI coding agent powered by MiniMax). The AI agent helped implement PDF Watch continuous monitoring feature and UX improvements.
 
+## Version History
+
+### v0.0.14 (2026-04-13)
+- **Fix:** PDF Watch preferences now persist correctly (scan interval, checkbox, folder path)
+- **Fix:** Browse button now works properly using Zotero 9 FilePicker API
+- **Fix:** Race condition in PDF Watch interval scanning causing duplicate imports
+- **Fix:** Removed menu Start/Stop from inadvertently modifying preferences checkbox
+- **Improvement:** Dynamic event listeners for better Zotero 9 compatibility
+- **Improvement:** HTML input elements for preferences pane for better cross-version compatibility
+
 ## Installation
 
 Install by downloading the [latest version](https://github.com/Yunoinsky/zotero-folder-import/releases/latest).

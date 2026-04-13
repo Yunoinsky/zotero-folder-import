@@ -8,9 +8,6 @@ import 'zotero-plugin/make-manifest'
 import 'zotero-plugin/make-version'
 import 'zotero-plugin/copy-assets'
 
-import pug from 'pug'
-import pretty from 'pretty'
-
 async function bundle(entry) {
   const outdir = path.join('build', path.basename(path.dirname(entry)))
   const config = {
@@ -46,8 +43,12 @@ async function bundle(entry) {
 async function build() {
   await bundle('bootstrap.ts')
   await bundle('content/folder-import.ts')
-  await bundle('content/bulkimport.ts')
-  fs.writeFileSync('build/content/wizard.xhtml', pretty(pug.compileFile('content/wizard.pug')()))
+
+  fs.copyFileSync('content/prefs.js', 'build/content/prefs.js')
+  fs.copyFileSync('content/preferences.xhtml', 'build/content/preferences.xhtml')
+  
+  const manifest = JSON.parse(fs.readFileSync('build/manifest.json', 'utf8'))
+  fs.writeFileSync('build/manifest.json', JSON.stringify(manifest, null, 2))
 }
 
 build().catch(err => {

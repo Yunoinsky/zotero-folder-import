@@ -2,6 +2,7 @@ declare var Zotero: any // eslint-disable-line no-var
 declare const Services: any
 declare const Components: any
 declare const ChromeUtils: any
+declare let rootURI: string
 
 import { FilePickerHelper, ZoteroToolkit } from 'zotero-plugin-toolkit'
 const ztoolkit = new ZoteroToolkit()
@@ -32,14 +33,17 @@ class FolderScanner {
 
   name: string
 
-  constructor(public path: string, isRoot: boolean) {
+  constructor(
+    public path: string,
+    isRoot: boolean,
+  ) {
     log.info(`scanning ${path}`)
     this.path = path
     this.name = isRoot ? '' : PathUtils.filename(path)
   }
 
   public async scan() {
-    for (const entry of (await IOUtils.getChildren(this.path))) {
+    for (const entry of await IOUtils.getChildren(this.path)) {
       const info = await IOUtils.stat(entry)
       if (info.type === 'directory') {
         this.folders.push(new FolderScanner(entry, false))
@@ -56,7 +60,9 @@ class FolderScanner {
     for (const dir of this.folders) {
       this.extensions = new Set([...this.extensions, ...dir.extensions])
     }
-    log.info(`scanned ${this.path}: ${JSON.stringify(Array.from(this.extensions))}`)
+    log.info(
+      `scanned ${this.path}: ${JSON.stringify(Array.from(this.extensions))}`,
+    )
   }
 
   public selected(extensions) {
@@ -74,15 +80,23 @@ class FolderScanner {
     log.info(`importing path ${this.path}`)
 
     if (this.name) {
-      const existing = (collection ? collection.getChildCollections() : Zotero.Collections.getByLibrary(params.libraryID)).find(child => child.name === this.name)
+      const existing = (
+        collection
+          ? collection.getChildCollections()
+          : Zotero.Collections.getByLibrary(params.libraryID)
+      ).find(child => child.name === this.name)
 
       if (existing) {
-        log.info(`${this.name} exists under ${collection ? collection.name : 'the selected library'}`)
+        log.info(
+          `${this.name} exists under ${collection ? collection.name : 'the selected library'}`,
+        )
         collection = existing
       }
       else {
         // eslint-disable-next-line @typescript-eslint/restrict-plus-operands, prefer-template
-        log.info(`${this.name} does not exist, creating${collection ? ' under ' + collection.name : ''}`)
+        log.info(
+          `${this.name} does not exist, creating${collection ? ' under ' + collection.name : ''}`,
+        )
         const parentKey = collection ? collection.key : undefined
         collection = new Zotero.Collection()
         collection.libraryID = params.libraryID
@@ -98,7 +112,9 @@ class FolderScanner {
 
     for (const file of this.files.sort()) {
       if (!params.extensions.has(this.extension(file))) {
-        log.info(`not importing ${file} with extension ${this.extension(file)}`)
+        log.info(
+          `not importing ${file} with extension ${this.extension(file)}`,
+        )
         continue
       }
       if (duplicates.has(file)) {
@@ -108,7 +124,9 @@ class FolderScanner {
 
       try {
         if (params.link) {
-          log.info(`linking ${file} into ${collection ? collection.name : '<root>'}`)
+          log.info(
+            `linking ${file} into ${collection ? collection.name : '<root>'}`,
+          )
           const item = await Zotero.Attachments.linkFromFile({
             file,
             parentItemID: false,
@@ -117,10 +135,14 @@ class FolderScanner {
           if (file.toLowerCase().endsWith('.pdf')) pdfs.push(item)
         }
         else if (file.endsWith('.lnk')) {
-          log.info(`not importing ${file} with extension ${this.extension(file)}`)
+          log.info(
+            `not importing ${file} with extension ${this.extension(file)}`,
+          )
         }
         else {
-          log.info(`importing ${file} into ${collection ? collection.name : '<root>'}`)
+          log.info(
+            `importing ${file} into ${collection ? collection.name : '<root>'}`,
+          )
           const item = await Zotero.Attachments.importFromFile({
             file,
             libraryID: params.libraryID,
@@ -159,14 +181,17 @@ class PDFWatcher {
   private isScanning: boolean = false
 
   constructor() {
-    this.watchFolder = Zotero.Prefs.get('extensions.folder-import.watchFolder') || ''
-    this.libraryID = Zotero.Prefs.get('extensions.folder-import.watchLibraryID') || null
+    this.watchFolder = Zotero.Prefs.get('extensions.zotero.folder-import.watchFolder') || ''
+    this.libraryID = Zotero.Prefs.get('extensions.zotero.folder-import.watchLibraryID')
+      || null
     this.updateProcessedFilesPath()
     this.loadProcessedFiles()
   }
 
   private updateProcessedFilesPath() {
-    this.processedFilesPath = this.watchFolder ? PathUtils.join(this.watchFolder, '.zotero-folder-import-processed.json') : ''
+    this.processedFilesPath = this.watchFolder
+      ? PathUtils.join(this.watchFolder, '.zotero-folder-import-processed.json')
+      : ''
   }
 
   private normalizePath(path: string): string {
@@ -184,7 +209,9 @@ class PDFWatcher {
         if (content) {
           const arr = JSON.parse(content)
           arr.forEach((p: string) => this.processedFiles.add(this.normalizePath(p)))
-          log.info(`Loaded ${this.processedFiles.size} processed files from file`)
+          log.info(
+            `Loaded ${this.processedFiles.size} processed files from file`,
+          )
           return
         }
       }
@@ -195,11 +222,15 @@ class PDFWatcher {
 
     // Fallback to Zotero prefs
     try {
-      const stored = Zotero.Prefs.get('extensions.folder-import.processedFiles')
+      const stored = Zotero.Prefs.get(
+        'extensions.zotero.folder-import.processedFiles',
+      )
       if (stored) {
         const arr = JSON.parse(stored as string)
         arr.forEach((p: string) => this.processedFiles.add(this.normalizePath(p)))
-        log.info(`Loaded ${this.processedFiles.size} processed files from prefs`)
+        log.info(
+          `Loaded ${this.processedFiles.size} processed files from prefs`,
+        )
       }
     }
     catch (err) {
@@ -211,7 +242,10 @@ class PDFWatcher {
     // Save to file
     if (this.processedFilesPath) {
       try {
-        Zotero.File.putContents(this.processedFilesPath, JSON.stringify([...this.processedFiles]))
+        Zotero.File.putContents(
+          this.processedFilesPath,
+          JSON.stringify([...this.processedFiles]),
+        )
         log.debug(`Saved ${this.processedFiles.size} processed files to file`)
       }
       catch (err) {
@@ -221,7 +255,10 @@ class PDFWatcher {
 
     // Also save to prefs as backup
     try {
-      Zotero.Prefs.set('extensions.folder-import.processedFiles', JSON.stringify([...this.processedFiles]))
+      Zotero.Prefs.set(
+        'extensions.zotero.folder-import.processedFiles',
+        JSON.stringify([...this.processedFiles]),
+      )
     }
     catch (err) {
       log.error(`Failed to save to prefs: ${err}`)
@@ -258,14 +295,19 @@ class PDFWatcher {
   public setWatchFolder(folder: string) {
     this.watchFolder = folder
     this.updateProcessedFilesPath()
-    Zotero.Prefs.set('extensions.folder-import.watchFolder', folder)
+    Zotero.Prefs.set('extensions.zotero.folder-import.watchFolder', folder)
     this.loadProcessedFiles()
-    log.info(`Watch folder set to: ${folder}, loaded ${this.processedFiles.size} processed files`)
+    log.info(
+      `Watch folder set to: ${folder}, loaded ${this.processedFiles.size} processed files`,
+    )
   }
 
   public setLibraryID(libraryID: number) {
     this.libraryID = libraryID
-    Zotero.Prefs.set('extensions.folder-import.watchLibraryID', libraryID)
+    Zotero.Prefs.set(
+      'extensions.zotero.folder-import.watchLibraryID',
+      libraryID,
+    )
   }
 
   public getLibraryID(): number | null {
@@ -281,13 +323,13 @@ class PDFWatcher {
       log.debug('Scan already in progress, skipping')
       return
     }
+    this.isScanning = true
 
-    if (!this.watchFolder || !await IOUtils.exists(this.watchFolder)) {
+    if (!this.watchFolder || !(await IOUtils.exists(this.watchFolder))) {
       log.debug(`Watch folder does not exist or not set: ${this.watchFolder}`)
+      this.isScanning = false
       return
     }
-
-    this.isScanning = true
 
     try {
       log.info(`Scanning watch folder: ${this.watchFolder}`)
@@ -309,12 +351,16 @@ class PDFWatcher {
       const pdfs: any[] = []
       const newFiles: string[] = []
 
-      log.info(`Total files in folder: ${root.files.length}, processed files: ${this.processedFiles.size}`)
+      log.info(
+        `Total files in folder: ${root.files.length}, processed files: ${this.processedFiles.size}`,
+      )
 
       root.files.forEach(file => {
         const normalizedFile = this.normalizePath(file)
         const isProcessed = this.processedFiles.has(normalizedFile)
-        log.debug(`Checking file: ${file}, normalized: ${normalizedFile}, isProcessed: ${isProcessed}`)
+        log.debug(
+          `Checking file: ${file}, normalized: ${normalizedFile}, isProcessed: ${isProcessed}`,
+        )
         if (!isProcessed && file.toLowerCase().endsWith('.pdf')) {
           newFiles.push(normalizedFile)
         }
@@ -367,18 +413,23 @@ class PDFWatcher {
       return false
     }
 
-    log.info(`Starting PDF watcher on ${this.watchFolder} with interval ${intervalMs}ms`)
+    log.info(
+      `Starting PDF watcher on ${this.watchFolder} with interval ${intervalMs}ms`,
+    )
 
-    const checkInterval = () => {
+    const checkInterval = async () => {
+      if (this.intervalId === null) return
+      await this.scanAndImportNewFiles()
       if (this.intervalId !== null) {
-        this.scanAndImportNewFiles()
         this.intervalId = setTimeout(checkInterval, intervalMs)
       }
     }
 
     this.intervalId = setTimeout(checkInterval, intervalMs)
-    Zotero.Prefs.set('extensions.folder-import.watchEnabled', true)
-    Zotero.Prefs.set('extensions.folder-import.watchInterval', intervalMs)
+    Zotero.Prefs.set(
+      'extensions.zotero.folder-import.watchInterval',
+      intervalMs,
+    )
 
     return true
   }
@@ -388,7 +439,6 @@ class PDFWatcher {
       log.info('Stopping PDF watcher')
       clearTimeout(this.intervalId)
       this.intervalId = null
-      Zotero.Prefs.set('extensions.folder-import.watchEnabled', false)
     }
   }
 
@@ -404,20 +454,55 @@ export class $FolderImport {
   public async startup() {
     await Zotero.initializationPromise
     DebugLogSender.register('Folder import', [])
+    this.registerPrefs()
     this.watcher = new PDFWatcher()
 
     for (const win of Zotero.getMainWindows()) {
       if (win.ZoteroPane) this.onMainWindowLoad(win)
     }
 
-    const watchEnabled = Zotero.Prefs.get('extensions.folder-import.watchEnabled')
+    const watchEnabled = Zotero.Prefs.get(
+      'extensions.zotero.folder-import.watchEnabled',
+    )
     if (watchEnabled) {
-      const watchFolder = Zotero.Prefs.get('extensions.folder-import.watchFolder')
-      const watchInterval = Zotero.Prefs.get('extensions.folder-import.watchInterval') || 5000
-      if (watchFolder) {
-        this.watcher.setWatchFolder(watchFolder as string)
-        this.watcher.startWatching(watchInterval as number)
+      let watchFolder = Zotero.Prefs.get(
+        'extensions.zotero.folder-import.watchFolder',
+      ) as string
+      const watchIntervalSec = (Zotero.Prefs.get(
+        'extensions.zotero.folder-import.watchIntervalSec',
+      ) as number) || 20
+      if (!watchFolder) {
+        try {
+          const homeDir = Services.dirsvc.get(
+            'Home',
+            Components.interfaces.nsIFile,
+          ).path
+          watchFolder = OS.Path.join(
+            OS.Path.join(homeDir, 'Downloads'),
+            'papers',
+          )
+        }
+        catch (e) {
+          log.debug('Could not get home directory, using empty watch folder')
+        }
       }
+      if (watchFolder) {
+        this.watcher.setWatchFolder(watchFolder)
+        this.watcher.startWatching(watchIntervalSec * 1000)
+      }
+    }
+  }
+
+  public async registerPrefs() {
+    try {
+      await Zotero.PreferencePanes.register({
+        pluginID: 'zotero-folder-import@iris-advies.com',
+        src: rootURI + 'content/preferences.xhtml',
+        label: 'PDF Watch',
+      })
+    }
+    catch (e) {
+      log.error('PreferencePanes.register failed:', e)
     }
   }
 
@@ -458,16 +543,6 @@ export class $FolderImport {
         },
         {
           tag: 'menuitem',
-          label: 'Set Folder…',
-          oncommand: 'Zotero.FolderImport.setWatchFolder()',
-        },
-        {
-          tag: 'menuitem',
-          label: 'Status',
-          oncommand: 'Zotero.FolderImport.showWatchStatus()',
-        },
-        {
-          tag: 'menuitem',
           label: 'Clear History',
           oncommand: 'Zotero.FolderImport.clearHistory()',
         },
@@ -485,29 +560,66 @@ export class $FolderImport {
     const done = `${this.status.done}`.padStart(total.length)
     const msg = `Imported ${done}/${total}...`
     log.debug(msg)
-    Zotero.updateZoteroPaneProgressMeter(Math.min((this.status.done * 100) / this.status.total, 100))
+    Zotero.updateZoteroPaneProgressMeter(
+      Math.min((this.status.done * 100) / this.status.total, 100),
+    )
   }
 
   public startWatching() {
-    const folder = this.watcher.getWatchFolder()
+    let folder = this.watcher.getWatchFolder()
     if (!folder) {
-      Services.prompt.alert(null, 'No Watch Folder', 'Please set a watch folder first using "PDF Watch: Set Folder…"')
+      folder = Zotero.Prefs.get(
+        'extensions.zotero.folder-import.watchFolder',
+      ) as string
+    }
+    if (!folder) {
+      try {
+        const homeDir = Services.dirsvc.get(
+          'Home',
+          Components.interfaces.nsIFile,
+        ).path
+        folder = OS.Path.join(OS.Path.join(homeDir, 'Downloads'), 'papers')
+      }
+      catch (e) {
+        folder = ''
+      }
+    }
+    if (!folder) {
+      Services.prompt.alert(
+        null,
+        'No Watch Folder',
+        'Please set a watch folder first in Preferences',
+      )
       return
     }
 
-    const interval = Zotero.Prefs.get('extensions.folder-import.watchInterval') || 5000
+    this.watcher.setWatchFolder(folder)
+    const intervalSec = (Zotero.Prefs.get(
+      'extensions.zotero.folder-import.watchIntervalSec',
+    ) as number) || 20
     this.watcher.setLibraryID(Zotero.Libraries.userLibraryID)
-    this.watcher.startWatching(interval as number)
-    Services.prompt.alert(null, 'PDF Watch Started', `Watching folder: ${folder}\nInterval: ${interval}ms`)
+    this.watcher.startWatching((intervalSec as number) * 1000)
+    Services.prompt.alert(
+      null,
+      'PDF Watch Started',
+      `Watching folder: ${folder}\nInterval: ${intervalSec}s`,
+    )
   }
 
   public stopWatching() {
     this.watcher.stopWatching()
-    Services.prompt.alert(null, 'PDF Watch Stopped', 'PDF watching has been stopped')
+    Services.prompt.alert(
+      null,
+      'PDF Watch Stopped',
+      'PDF watching has been stopped',
+    )
   }
 
   public async setWatchFolder() {
-    const folder = await (new FilePickerHelper('Select Watch Folder', 'folder')).open()
+    const folder = await new FilePickerHelper(
+      'Select Watch Folder',
+      'folder',
+    ).open()
     if (!folder) return
 
     this.watcher.setWatchFolder(folder)
@@ -528,10 +640,169 @@ export class $FolderImport {
 
   public clearHistory() {
     this.watcher.clearProcessedFiles()
-    Services.prompt.alert(null, 'History Cleared', 'Processed files history has been cleared.\nPDF Watch will re-import all files in the watch folder on next scan.')
+    Services.prompt.alert(
+      null,
+      'History Cleared',
+      'Processed files history has been cleared.\nPDF Watch will re-import all files in the watch folder on next scan.',
+    )
   }
 
-  public async getWatchStatus(): Promise<{ folder: string; isWatching: boolean; processedCount: number }> {
+  public onPrefsLoad(event: Event) {
+    const target = event.target as Element
+    const doc = target.ownerDocument
+
+    const folderInput = doc.getElementById('watch-folder')
+    const intervalInput = doc.getElementById('scan-interval')
+    const enabledCheckbox = doc.getElementById('watch-enabled')
+    const statusLabel = doc.getElementById('status-label')
+    const browseBtn = doc.getElementById('browse-btn')
+
+    const watchFolder = (Zotero.Prefs.get(
+      'extensions.zotero.folder-import.watchFolder',
+    ) as string) || ''
+    const watchIntervalSec = (Zotero.Prefs.get(
+      'extensions.zotero.folder-import.watchIntervalSec',
+    ) as number) || 20
+    const watchEnabled = (Zotero.Prefs.get(
+      'extensions.zotero.folder-import.watchEnabled',
+    ) as boolean) || false
+
+    if (folderInput) {
+      ;(folderInput as HTMLInputElement).value = watchFolder
+      folderInput.addEventListener('input', () => this.savePrefsFromUI())
+      folderInput.addEventListener('change', () => this.savePrefsFromUI())
+    }
+    if (intervalInput) {
+      ;(intervalInput as HTMLInputElement).value = String(watchIntervalSec)
+      intervalInput.addEventListener('input', () => this.savePrefsFromUI())
+      intervalInput.addEventListener('change', () => this.savePrefsFromUI())
+    }
+    if (enabledCheckbox) {
+      ;(enabledCheckbox as HTMLInputElement).checked = watchEnabled
+      enabledCheckbox.addEventListener('command', () => this.savePrefsFromUI())
+    }
+    if (browseBtn) {
+      browseBtn.addEventListener('command', () => this.browseWatchFolder())
+    }
+
+    if (statusLabel) {
+      let folder = this.watcher.getWatchFolder()
+      if (!folder && watchFolder) {
+        folder = watchFolder
+      }
+      if (!folder) {
+        try {
+          const homeDir = Services.dirsvc.get(
+            'Home',
+            Components.interfaces.nsIFile,
+          ).path
+          folder = OS.Path.join(OS.Path.join(homeDir, 'Downloads'), 'papers')
+        }
+        catch (e) {
+          folder = 'Not set'
+        }
+      }
+      const isWatching = this.watcher.isWatching()
+      const processedCount = this.watcher.getProcessedFilesCount()
+      const status = isWatching ? 'Running' : 'Stopped'
+      ;(statusLabel as HTMLInputElement).value = `Status: ${status} | Folder: ${folder || 'Not set'} | Processed: ${processedCount}`
+    }
+  }
+
+  public savePrefsFromUI(event?: Event) {
+    let doc: Document | null = null
+
+    if (event?.target && (event.target as Element).ownerDocument) {
+      doc = (event.target as Element).ownerDocument
+    }
+    else {
+      const prefWindow = Services.wm.getMostRecentWindow('zotero:pref')
+      if (prefWindow) {
+        doc = prefWindow.document
+      }
+    }
+
+    if (!doc) {
+      log.error('savePrefsFromUI: could not get document')
+      return
+    }
+
+    const folderInput = doc.getElementById('watch-folder') as HTMLInputElement | null
+    const intervalInput = doc.getElementById(
+      'scan-interval',
+    ) as HTMLInputElement | null
+    const enabledCheckbox = doc.getElementById(
+      'watch-enabled',
+    ) as HTMLInputElement | null
+
+    const watchFolder = folderInput?.value?.trim() || ''
+    const rawInterval = parseInt(intervalInput?.value || '20', 10)
+    const scanIntervalSec = isNaN(rawInterval) ? 20 : Math.max(1, Math.min(rawInterval, 3600))
+    const watchEnabled = enabledCheckbox?.checked === true
+
+    Zotero.Prefs.set(
+      'extensions.zotero.folder-import.watchFolder',
+      watchFolder,
+    )
+    Zotero.Prefs.set(
+      'extensions.zotero.folder-import.watchIntervalSec',
+      scanIntervalSec,
+    )
+    Zotero.Prefs.set(
+      'extensions.zotero.folder-import.watchEnabled',
+      watchEnabled,
+    )
+
+    if (watchFolder) {
+      this.watcher.setWatchFolder(watchFolder)
+    }
+
+    log.debug(`savePrefsFromUI: folder=${watchFolder}, interval=${scanIntervalSec}, enabled=${watchEnabled}`)
+  }
+
+  public async browseWatchFolder() {
+    const { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs')
+
+    const windows = Zotero.getMainWindows()
+    const prefWin = windows.length > 0 ? windows[0] : null
+    if (!prefWin) {
+      log.error('No preference window found')
+      return
+    }
+
+    const fp = new FilePicker()
+    fp.init(prefWin, 'Select Watch Folder', fp.modeGetFolder)
+    fp.appendFilters(fp.filterAll)
+
+    const result = await fp.show()
+    if (result === fp.returnOK) {
+      const folderPath = fp.file
+      Zotero.Prefs.set(
+        'extensions.zotero.folder-import.watchFolder',
+        folderPath,
+      )
+      this.watcher.setWatchFolder(folderPath)
+
+      const prefWindow = Services.wm.getMostRecentWindow('zotero:pref')
+      if (prefWindow) {
+        const doc = prefWindow.document
+        const folderInput = doc.getElementById('watch-folder')
+        const statusLabel = doc.getElementById('status-label')
+        if (folderInput) {
+          folderInput.value = folderPath
+        }
+        if (statusLabel) {
+          statusLabel.value = `Status: Stopped | Folder: ${folderPath} | Processed: ${this.watcher.getProcessedFilesCount()}`
+        }
+      }
+    }
+  }
+
+  public async getWatchStatus(): Promise<{
+    folder: string
+    isWatching: boolean
+    processedCount: number
+  }> {
     return {
       folder: this.watcher.getWatchFolder(),
       isWatching: this.watcher.isWatching(),
@@ -540,20 +811,34 @@ export class $FolderImport {
   }
 
   private async duplicates(path: string): Promise<string[]> {
-    const rmlint: string = Zotero.Prefs.get('extensions.folder-import.rmlint')
+    const rmlint: string = Zotero.Prefs.get(
+      'extensions.zotero.folder-import.rmlint',
+    )
     if (!rmlint) return []
-    if (!await IOUtils.exists(rmlint)) return []
+    if (!(await IOUtils.exists(rmlint))) return []
 
-    const duplicates: string = PathUtils.join(Zotero.getTempDirectory().path as string, `rmlint${Zotero.Utilities.randomString()}.json`)
+    const duplicates: string = PathUtils.join(
+      Zotero.getTempDirectory().path as string,
+      `rmlint${Zotero.Utilities.randomString()}.json`,
+    )
 
     try {
       const cmd = Zotero.File.pathToFile(rmlint)
       if (!cmd.isExecutable()) return []
 
-      const proc = Components.classes['@mozilla.org/process/util;1'].createInstance(Components.interfaces.nsIProcess)
+      const proc = Components.classes[
+        '@mozilla.org/process/util;1'
+      ].createInstance(Components.interfaces.nsIProcess)
       proc.init(cmd)
       proc.startHidden = true
-      const args = ['-o', `json:${duplicates}`, '-T', 'df', Zotero.getStorageDirectory(), path]
+      const args = [
+        '-o',
+        `json:${duplicates}`,
+        '-T',
+        'df',
+        Zotero.getStorageDirectory(),
+        path,
+      ]
       await new Promise((resolve, reject) => {
         proc.runwAsync(args, args.length, {
           observe: (subject, topic) => {
@@ -561,7 +846,11 @@ export class $FolderImport {
               reject(new Error(`failed: ${rmlint} ${args}`))
             }
             else if (proc.exitValue > 0) {
-              reject(new Error(`failed with exit status ${proc.exitValue}: ${rmlint} ${args}`))
+              reject(
+                new Error(
+                  `failed with exit status ${proc.exitValue}: ${rmlint} ${args}`,
+                ),
+              )
             }
             else {
               resolve(true)
@@ -582,8 +871,7 @@ export class $FolderImport {
       try {
         await IOUtils.remove(duplicates)
       }
-      catch (err) {
-      }
+      catch (err) {}
     }
   }
 
@@ -603,17 +891,18 @@ export class $FolderImport {
     const collection = zoteroPane.getSelectedCollection()
 
     log.debug('opening file picker')
-    const folder = await (new FilePickerHelper(`${Zotero.getString('fileInterface.import')} Folder`, 'folder')).open()
+    const folder = await new FilePickerHelper(
+      `${Zotero.getString('fileInterface.import')} Folder`,
+      'folder',
+    ).open()
     if (!folder) return
 
-    Zotero.showZoteroPaneProgressMeter('Scanning for attachments...')
     const root = new FolderScanner(folder, true)
     await root.scan()
-    Zotero.hideZoteroPaneOverlays()
 
-    // Zotero.Translators.getAllForType('import')
-
-    log.debug(`scan complete: ${JSON.stringify(Array.from(root.extensions))} (${root.extensions.size})`)
+    log.debug(
+      `scan complete: ${JSON.stringify(Array.from(root.extensions))} (${root.extensions.size})`,
+    )
     if (root.extensions.size) {
       const collectionTreeRow = zoteroPane.getCollectionTreeRow()
       const params = {
@@ -627,18 +916,19 @@ export class $FolderImport {
 
       if (params.extensions.size) {
         const pdfs = []
-        Zotero.showZoteroPaneProgressMeter('Importing attachments...', true)
         this.status = { total: root.selected(params.extensions), done: 0 }
-        await root.import(params, zoteroPane.getSelectedCollection(), pdfs, new Set(await this.duplicates(folder)))
-        Zotero.hideZoteroPaneOverlays()
+        await root.import(
+          params,
+          zoteroPane.getSelectedCollection(),
+          pdfs,
+          new Set(await this.duplicates(folder)),
+        )
         if (pdfs.length) {
-          Zotero.showZoteroPaneProgressMeter('Fetching metadata for attachments...')
           Zotero.RecognizeDocument.autoRecognizeItems(pdfs)
-          Zotero.hideZoteroPaneOverlays()
         }
       }
     }
   }
 }
 
-export var FolderImport = Zotero.FolderImport = new $FolderImport()
+export var FolderImport = (Zotero.FolderImport = new $FolderImport())
